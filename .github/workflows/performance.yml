@@ -1,0 +1,62 @@
+name: Continuous Performance Benchmark
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+
+  performance:
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run API tests
+        run: |
+          pytest -q
+
+      - name: Start FastAPI
+        run: |
+          uvicorn app.main:app \
+            --host 127.0.0.1 \
+            --port 8000 &
+
+      - name: Wait for application
+        run: |
+          sleep 5
+
+      - name: Run performance benchmark
+        run: |
+          python -m benchmark.runner \
+            --url http://127.0.0.1:8000 \
+            --path /health \
+            --requests 100 \
+            --out data/latest.json
+
+      - name: Detect performance regression
+        run: |
+          python -m benchmark.regression \
+            --baseline benchmark/baseline.json \
+            --current data/latest.json
+
+      - name: Upload benchmark result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-results
+          path: data/
